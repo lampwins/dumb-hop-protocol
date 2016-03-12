@@ -1,4 +1,4 @@
-import java.util.Random;
+import java.util.*;
 
 /**
  * Created by andersonjd on 3/12/16.
@@ -77,12 +77,14 @@ public class Main {
         //begin simulation
         int iterations = 10,i = 0;
 
+        ArrayList<Transmission> transmissions = new ArrayList<>();
+
         while(i++ < iterations){
 
             Random r = new Random();
 
-            Node source = hostTopology[r.nextInt(rows)][r.nextInt(collums)];
-            Node destination = hostTopology[r.nextInt(rows)][r.nextInt(collums)];
+            Node source = hostTopology[r.nextInt(rows - 1)][r.nextInt(collums - 1)];
+            Node destination = hostTopology[r.nextInt(rows - 1)][r.nextInt(collums - 1)];
 
             if(source.equals(destination)){
                 //try again if the same
@@ -91,13 +93,66 @@ public class Main {
             }
 
             Node currentNode = source;
+            Transmission transmission = new Transmission(source, destination, r.nextInt(iterations / 2), r.nextInt(100));
+            transmissions.add(transmission);
 
             int lateralDif = destination.getCol() - source.getCol();
             int verticalDif = destination.getRow() - source.getRow();
 
-            //check single hop lateral
-            if(verticalDif == 0){
-                
+            boolean notThereYet = true;
+
+            while(notThereYet) {
+
+                Collection<Adjacency> connectedNodes = network.getAdjacencies(currentNode);
+                ArrayList<Adjacency> candidateAdjacencies = new ArrayList<>();
+
+                for(Adjacency a: connectedNodes){
+                    if(!transmission.hasNode(a.getNode())){
+                        //remove adjacencies that would result in a routing loop
+                        candidateAdjacencies.add(a);
+                    }
+                }
+
+                for(Iterator<Adjacency> iterator = candidateAdjacencies.iterator(); iterator.hasNext();) {
+
+                    Adjacency a = iterator.next();
+
+
+                }
+
+
+                if(!currentNode.equals(destination)) {
+                    if (candidateAdjacencies.size() > 1) {
+                        Collections.shuffle(candidateAdjacencies);
+                    }
+
+                    Adjacency selectedPath = candidateAdjacencies.get(0);
+                    transmission.addConnection(selectedPath);
+                    currentNode = selectedPath.getNode();
+
+                    if (currentNode.equals(destination)) {
+                        notThereYet = false;
+                    }
+                }
+            }
+
+            //iteration cleanup
+            for(Transmission t: transmissions){
+                t.setTtl(t.getTtl() - 1);
+
+                if(t.getTtl() == 0){
+                    for(Connection c: t.getConnections()){
+                        c.decreaseSaturation(t.getSaturation());
+                    }
+                    System.out.println("Transmission between " +
+                            t.getSource().getClass().toString().replaceAll("class ", "") +
+                            " [" + t.getSource().getRow() + "," +
+                            t.getSource().getCol() + "] and " +
+                            t.getDestination().getClass().toString().replaceAll("class ", "") +
+                            " [" + t.getDestination().getRow() + "," +
+                            t.getDestination().getCol() + "] Complete");
+                    transmissions.remove(t);
+                }
             }
         }
     }
