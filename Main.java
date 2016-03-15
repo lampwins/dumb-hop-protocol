@@ -26,7 +26,6 @@ public class Main {
         }
 
         //provision hosts
-        idCounter = 0;
         for(int i = 0; i < rows - 1; i++){
             for(int j = 0; j < collums - 1; j++){
                 Host h = new Host();
@@ -75,19 +74,25 @@ public class Main {
 
 
         //begin simulation
-        int iterations = 10,i = 0;
+        int iterations = 100,i = 0;
 
         ArrayList<Transmission> transmissions = new ArrayList<>();
 
         while(i++ < iterations){
+
+            System.out.println("---Beginning Transmission " + (i - 1) + "---");
 
             Random r = new Random();
 
             Node source = hostTopology[r.nextInt(rows - 1)][r.nextInt(collums - 1)];
             Node destination = hostTopology[r.nextInt(rows - 1)][r.nextInt(collums - 1)];
 
+            System.out.println("\tSource: [" + source.getRow() + "," + source.getCol() + "]");
+            System.out.println("\tDestination: [" + destination.getRow() + "," + destination.getCol() + "]");
+
             if(source.equals(destination)){
                 //try again if the same
+                System.out.println("Aborting transmission; Source equals destination");
                 i--;
                 continue;
             }
@@ -96,64 +101,181 @@ public class Main {
             Transmission transmission = new Transmission(source, destination, r.nextInt(iterations / 2), r.nextInt(100));
             transmissions.add(transmission);
 
-            int lateralDif = destination.getCol() - source.getCol();
-            int verticalDif = destination.getRow() - source.getRow();
+            int lateralDif = destination.getCol() - currentNode.getCol();
+            int verticalDif = destination.getRow() - currentNode.getRow();
+
+            System.out.println("\t\tlat diff: " + lateralDif);
+            System.out.println("\t\tvert diff: " + verticalDif);
 
             boolean notThereYet = true;
 
             while(notThereYet) {
 
+                System.out.println("\t\tNext hop selection for: [" + currentNode.getRow() + "," + currentNode.getCol() + "]");
+
                 Collection<Adjacency> connectedNodes = network.getAdjacencies(currentNode);
                 ArrayList<Adjacency> candidateAdjacencies = new ArrayList<>();
 
                 for(Adjacency a: connectedNodes){
+                    //leave out adjacencies that would result in a routing loop
                     if(!transmission.hasNode(a.getNode())){
-                        //remove adjacencies that would result in a routing loop
-                        candidateAdjacencies.add(a);
+                        //check if direct connect is available otherwise only add routers
+                        if(a.getNode().getClass().equals(Router.class) || a.getNode().equals(destination)) {
+                            candidateAdjacencies.add(a);
+
+                            System.out.println("\t\t\tAdding to candidate list: [" + a.getNode().getRow() + "," + a.getNode().getCol() + "]");
+                        }
                     }
                 }
 
+                if(candidateAdjacencies.size() == 0){
+                    //failed to find a path
+                    System.out.println("Failed to select path");
+                    break;
+                }
+
+
+                System.out.println("\t\t\tStarting lateral scrubbing");
+
+                //lateral scrubbing
                 for(Iterator<Adjacency> iterator = candidateAdjacencies.iterator(); iterator.hasNext();) {
 
                     Adjacency a = iterator.next();
 
+                    if(!iterator.hasNext()){
+                        //size is 1
+                        break;
+                    }
 
+                    if(a.getNode().equals(destination)){
+                        //this is a direct connect, prefer it by skipping
+                        continue;
+                    }
+
+                    if(lateralDif >= 0){
+                        //can move right if needed
+                        //remove all connections to the left
+                        if(a.getNode().getCol() < currentNode.getCol()){
+                            iterator.remove();
+
+                            System.out.println("\t\t\tRemoving from candidate list: [" + a.getNode().getRow() + "," + a.getNode().getCol() + "]");
+                        }
+                    }else{
+                        //must move left
+                        //remove all right moves
+                        if(a.getNode().getCol() > currentNode.getCol()){
+                            iterator.remove();
+
+                            System.out.println("\t\t\tRemoving from candidate list: [" + a.getNode().getRow() + "," + a.getNode().getCol() + "]");
+                        }
+                    }
                 }
 
 
-                if(!currentNode.equals(destination)) {
-                    if (candidateAdjacencies.size() > 1) {
-                        Collections.shuffle(candidateAdjacencies);
+                System.out.println("\t\t\tStarting vertical scrubbing");
+
+                //vertical scrubbing
+                for(Iterator<Adjacency> iterator = candidateAdjacencies.iterator(); iterator.hasNext();) {
+
+                    Adjacency a = iterator.next();
+
+                    if(!iterator.hasNext()){
+                        //size is 1
+                        break;
                     }
 
-                    Adjacency selectedPath = candidateAdjacencies.get(0);
-                    transmission.addConnection(selectedPath);
-                    currentNode = selectedPath.getNode();
-
-                    if (currentNode.equals(destination)) {
-                        notThereYet = false;
+                    if(a.getNode().equals(destination)){
+                        //this is a direct connect, prefer it by skipping
+                        continue;
                     }
+
+                    if(verticalDif >= 0){
+                        //can move down if needed
+                        //remove all connections up
+                        if(a.getNode().getRow() < currentNode.getRow()){
+                            iterator.remove();
+
+                            System.out.println("\t\t\tRemoving from candidate list: [" + a.getNode().getRow() + "," + a.getNode().getCol() + "]");
+                        }
+                    }else{
+                        //must move up
+                        //remove all moves down
+                        if(a.getNode().getRow() > currentNode.getRow()){
+                            iterator.remove();
+
+                            System.out.println("\t\t\tRemoving from candidate list: [" + a.getNode().getRow() + "," + a.getNode().getCol() + "]");
+                        }
+                    }
+                }
+
+                Adjacency selectedPath = getAdjacencyWithSmallestSaturation(candidateAdjacencies, destination);
+                transmission.addConnection(selectedPath);
+                currentNode = selectedPath.getNode();
+
+                if (currentNode.equals(destination)) {
+                    notThereYet = false;
                 }
             }
 
             //iteration cleanup
             for(Transmission t: transmissions){
-                t.setTtl(t.getTtl() - 1);
-
-                if(t.getTtl() == 0){
-                    for(Connection c: t.getConnections()){
-                        c.decreaseSaturation(t.getSaturation());
+                if(t.getTtl() > 0){
+                    t.setTtl(t.getTtl() - 1);
+                    if(t.getTtl() == 0){
+                        for(Connection c: t.getConnections()){
+                            c.decreaseSaturation(t.getSaturation());
+                        }
+                        System.out.println("Transmission between " +
+                                t.getSource().getClass().toString().replaceAll("class ", "") +
+                                " [" + t.getSource().getRow() + "," +
+                                t.getSource().getCol() + "] and " +
+                                t.getDestination().getClass().toString().replaceAll("class ", "") +
+                                " [" + t.getDestination().getRow() + "," +
+                                t.getDestination().getCol() + "] Complete " +
+                                "- " + t.getConnections().size() + " hops"
+                        );
                     }
-                    System.out.println("Transmission between " +
-                            t.getSource().getClass().toString().replaceAll("class ", "") +
-                            " [" + t.getSource().getRow() + "," +
-                            t.getSource().getCol() + "] and " +
-                            t.getDestination().getClass().toString().replaceAll("class ", "") +
-                            " [" + t.getDestination().getRow() + "," +
-                            t.getDestination().getCol() + "] Complete");
-                    transmissions.remove(t);
                 }
             }
         }
+    }
+
+    public static Adjacency getAdjacencyWithSmallestSaturation(AbstractList<Adjacency> a, Node destination){
+
+        if(a.size() == 1){
+            return a.get(0);
+        }
+
+        System.out.println("\t\t\tSaturation selection:");
+
+        Adjacency selection = a.get(0);
+        for(int i = 0; i < a.size(); i++) {
+            for (int j = 0; j < a.size(); j++) {
+
+                System.out.println("\t\t\t\t[" + a.get(i).getNode().getRow() + "," + a.get(i).getNode().getCol() + "]: " + a.get(i).getConnection().getSaturation() +
+                        " [" + a.get(j).getNode().getRow() + "," + a.get(j).getNode().getCol() + "]: " + a.get(j).getConnection().getSaturation());
+
+                if (a.get(j).getConnection().getSaturation() < a.get(i).getConnection().getSaturation()){
+                    selection = a.get(j);
+
+                    System.out.println("\t\t\t\tChanged selection to [" + a.get(j).getNode().getRow() + "," + a.get(j).getNode().getCol() + "]");
+                }
+            }
+        }
+
+        for(Adjacency b: a){
+            if(b.getNode().equals(destination)){
+                if(b.getConnection().getSaturation() == selection.getConnection().getSaturation()){
+                    //if saturation is equal, choose the direct connect
+                    selection = b;
+
+                    System.out.println("\t\t\t\tChanged selection to [" + selection.getNode().getRow() + "," + selection.getNode().getCol() + "] because of direct connect");
+                }
+            }
+        }
+
+        System.out.println("\t\t\t\tFinal selection: [" + selection.getNode().getRow() + "," + selection.getNode().getCol() + "]");
+
+        return selection;
     }
 }
