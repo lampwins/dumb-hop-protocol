@@ -7,8 +7,8 @@ public class Main {
 
     public static void main(String[] args){
 
-        int collums = 10;
-        int rows = 10;
+        int collums = 5;
+        int rows = 5;
 
         Network network = new Network();
 
@@ -74,7 +74,7 @@ public class Main {
 
 
         //begin simulation
-        int iterations = 100,i = 0;
+        int iterations = 25,i = 0;
 
         ArrayList<Transmission> transmissions = new ArrayList<>();
 
