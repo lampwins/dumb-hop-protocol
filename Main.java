@@ -1,3 +1,5 @@
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.*;
 
 /**
@@ -6,6 +8,10 @@ import java.util.*;
 public class Main {
 
     public static void main(String[] args){
+
+
+        Writer transmissionWriter = new Writer();
+        transmissionWriter.append("id,source,destination,ttl,saturation,hops,avg_sat_start,avg_sat_middle,avg_sat_end\n");
 
         int collums = 5;
         int rows = 5;
@@ -74,7 +80,7 @@ public class Main {
 
 
         //begin simulation
-        int iterations = 25,i = 0;
+        int iterations = 100,i = 0;
 
         ArrayList<Transmission> transmissions = new ArrayList<>();
 
@@ -87,8 +93,8 @@ public class Main {
             Node source = hostTopology[r.nextInt(rows - 1)][r.nextInt(collums - 1)];
             Node destination = hostTopology[r.nextInt(rows - 1)][r.nextInt(collums - 1)];
 
-            System.out.println("\tSource: [" + source.getRow() + "," + source.getCol() + "]");
-            System.out.println("\tDestination: [" + destination.getRow() + "," + destination.getCol() + "]");
+            System.out.println("\tSource: " + source);
+            System.out.println("\tDestination: " + destination);
 
             if(source.equals(destination)){
                 //try again if the same
@@ -98,8 +104,7 @@ public class Main {
             }
 
             Node currentNode = source;
-            Transmission transmission = new Transmission(source, destination, r.nextInt(iterations / 2), r.nextInt(100));
-            transmissions.add(transmission);
+            Transmission transmission = new Transmission(source, destination, r.nextInt(iterations / 2) | 1, r.nextInt(100));
 
             int lateralDif = destination.getCol() - currentNode.getCol();
             int verticalDif = destination.getRow() - currentNode.getRow();
@@ -111,7 +116,7 @@ public class Main {
 
             while(notThereYet) {
 
-                System.out.println("\t\tNext hop selection for: [" + currentNode.getRow() + "," + currentNode.getCol() + "]");
+                System.out.println("\t\tNext hop selection for: " + currentNode);
 
                 Collection<Adjacency> connectedNodes = network.getAdjacencies(currentNode);
                 ArrayList<Adjacency> candidateAdjacencies = new ArrayList<>();
@@ -123,7 +128,7 @@ public class Main {
                         if(a.getNode().getClass().equals(Router.class) || a.getNode().equals(destination)) {
                             candidateAdjacencies.add(a);
 
-                            System.out.println("\t\t\tAdding to candidate list: [" + a.getNode().getRow() + "," + a.getNode().getCol() + "]");
+                            System.out.println("\t\t\tAdding to candidate list: " + a.getNode());
                         }
                     }
                 }
@@ -158,7 +163,7 @@ public class Main {
                         if(a.getNode().getCol() < currentNode.getCol()){
                             iterator.remove();
 
-                            System.out.println("\t\t\tRemoving from candidate list: [" + a.getNode().getRow() + "," + a.getNode().getCol() + "]");
+                            System.out.println("\t\t\tRemoving from candidate list: " + a.getNode());
                         }
                     }else{
                         //must move left
@@ -166,7 +171,7 @@ public class Main {
                         if(a.getNode().getCol() > currentNode.getCol()){
                             iterator.remove();
 
-                            System.out.println("\t\t\tRemoving from candidate list: [" + a.getNode().getRow() + "," + a.getNode().getCol() + "]");
+                            System.out.println("\t\t\tRemoving from candidate list: " + a.getNode());
                         }
                     }
                 }
@@ -195,7 +200,7 @@ public class Main {
                         if(a.getNode().getRow() < currentNode.getRow()){
                             iterator.remove();
 
-                            System.out.println("\t\t\tRemoving from candidate list: [" + a.getNode().getRow() + "," + a.getNode().getCol() + "]");
+                            System.out.println("\t\t\tRemoving from candidate list: " + a.getNode());
                         }
                     }else{
                         //must move up
@@ -203,7 +208,7 @@ public class Main {
                         if(a.getNode().getRow() > currentNode.getRow()){
                             iterator.remove();
 
-                            System.out.println("\t\t\tRemoving from candidate list: [" + a.getNode().getRow() + "," + a.getNode().getCol() + "]");
+                            System.out.println("\t\t\tRemoving from candidate list: " + a.getNode());
                         }
                     }
                 }
@@ -218,26 +223,55 @@ public class Main {
             }
 
             //iteration cleanup
-            for(Transmission t: transmissions){
-                if(t.getTtl() > 0){
-                    t.setTtl(t.getTtl() - 1);
-                    if(t.getTtl() == 0){
-                        for(Connection c: t.getConnections()){
-                            c.decreaseSaturation(t.getSaturation());
-                        }
-                        System.out.println("Transmission between " +
-                                t.getSource().getClass().toString().replaceAll("class ", "") +
-                                " [" + t.getSource().getRow() + "," +
-                                t.getSource().getCol() + "] and " +
-                                t.getDestination().getClass().toString().replaceAll("class ", "") +
-                                " [" + t.getDestination().getRow() + "," +
-                                t.getDestination().getCol() + "] Complete " +
-                                "- " + t.getConnections().size() + " hops"
-                        );
-                    }
+            //iterateTransmissions(transmissions);
+
+            //apply saturation value to each connection (start the transmission)
+            transmission.applySaturation();
+
+            //add newest transmission
+            transmissions.add(transmission);
+
+            transmission.setAvgSaturationStart(transmission.getAverageSaturation());
+        }
+
+        //while(iterateTransmissions(transmissions) > 0);
+
+        int itr = 1;
+        for(Transmission t: transmissions){
+            //id,source,destination,ttl,saturation,hops,avg_sat_start,avg_sat_middle,avg_sat_end
+            transmissionWriter.append(itr++ + ",\"" + t.getSource() + "\",\"" + t.getDestination() +
+                    "\"," + t.getTotalTtl() + "," + t.getSaturation() + "," + t.getConnections().size() +
+                    "," + t.getAvgSaturationStart() + "," + t.getAvgSaturationMiddle() + "," + t.getAvgSaturationEnd() + "\n");
+        }
+
+        transmissionWriter.close();
+    }
+
+    public static int iterateTransmissions(ArrayList<Transmission> transmissions){
+
+        int activeTransmissions = 0;
+        for(Transmission t: transmissions){
+            if(t.getTtl() > 0) {
+                if (t.getTtl() == Math.floor(t.getTotalTtl() * 0.5)) {
+                    t.setAvgSaturationMiddle(t.getAverageSaturation());
+                }
+                t.setTtl(t.getTtl() - 1);
+                if (t.getTtl() == 0) {
+                    t.setAvgSaturationEnd(t.getAverageSaturation());
+                    t.removeSaturation();
+                    System.out.println("Transmission between " +
+                                    t.getSource().getClass().toString().replaceAll("class ", "") +
+                                    " " + t.getSource() + " and " +
+                                    t.getDestination().getClass().toString().replaceAll("class ", "") +
+                                    " " + t.getDestination() + " Complete " +
+                                    "- " + t.getConnections().size() + " hops"
+                    );
+                }else{
+                    activeTransmissions++;
                 }
             }
         }
+        return activeTransmissions;
     }
 
     public static Adjacency getAdjacencyWithSmallestSaturation(AbstractList<Adjacency> a, Node destination){
@@ -252,13 +286,13 @@ public class Main {
         for(int i = 0; i < a.size(); i++) {
             for (int j = 0; j < a.size(); j++) {
 
-                System.out.println("\t\t\t\t[" + a.get(i).getNode().getRow() + "," + a.get(i).getNode().getCol() + "]: " + a.get(i).getConnection().getSaturation() +
-                        " [" + a.get(j).getNode().getRow() + "," + a.get(j).getNode().getCol() + "]: " + a.get(j).getConnection().getSaturation());
+                System.out.println("\t\t\t\t" + a.get(i).getNode() + ": " + a.get(i).getConnection().getSaturation() +
+                        " " + a.get(j).getNode() + ": " + a.get(j).getConnection().getSaturation());
 
                 if (a.get(j).getConnection().getSaturation() < a.get(i).getConnection().getSaturation()){
                     selection = a.get(j);
 
-                    System.out.println("\t\t\t\tChanged selection to [" + a.get(j).getNode().getRow() + "," + a.get(j).getNode().getCol() + "]");
+                    System.out.println("\t\t\t\tChanged selection to " + a.get(j).getNode());
                 }
             }
         }
@@ -269,13 +303,43 @@ public class Main {
                     //if saturation is equal, choose the direct connect
                     selection = b;
 
-                    System.out.println("\t\t\t\tChanged selection to [" + selection.getNode().getRow() + "," + selection.getNode().getCol() + "] because of direct connect");
+                    System.out.println("\t\t\t\tChanged selection to " + selection.getNode() + " because of direct connect");
                 }
             }
         }
 
-        System.out.println("\t\t\t\tFinal selection: [" + selection.getNode().getRow() + "," + selection.getNode().getCol() + "]");
+        System.out.println("\t\t\t\tFinal selection: " + selection.getNode());
 
         return selection;
     }
+}
+
+class Writer{
+
+    FileWriter writer;
+
+    public Writer(){
+        try {
+            writer = new FileWriter("transmissions.csv");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void append(String s){
+        try {
+            writer.append(s);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void close(){
+        try {
+            writer.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
 }
