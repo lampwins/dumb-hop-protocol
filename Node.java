@@ -19,4 +19,8 @@ public abstract class Node {
         return this.col;
     }
 
+    public String toString(){
+        return "[" + this.getRow() + "," + this.getCol() + "]";
+    }
+
 }
